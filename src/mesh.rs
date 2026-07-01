@@ -132,7 +132,13 @@ impl Mesh {
                         "obj" => Mesh::from_obj(model_file, recalc_normals)?,
                         "stl" => Mesh::from_stl(model_file, recalc_normals)?,
                         "3mf" => Mesh::from_3mf(model_file, recalc_normals)?,
-                        _ => unimplemented!("Format not supported"),
+                        extension => {
+                            return Err(io::Error::new(
+                                io::ErrorKind::InvalidInput,
+                                format!("Unsupported model format: {extension}"),
+                            )
+                            .into())
+                        }
                     },
                 )
             }
@@ -181,7 +187,12 @@ impl Mesh {
             }
         }
 
-        Ok(result.unwrap())
+        Ok(result.ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "3MF file contains no mesh triangles",
+            )
+        })?)
     }
 
     pub fn from_stl<R>(mut model_file: R, recalc_normals: bool) -> Result<Mesh, Box<dyn Error>>
@@ -192,9 +203,10 @@ impl Mesh {
         //debug!("{:?}", model);
         let mut stl_iter = stl_io::create_stl_reader(&mut model_file)?;
 
-        // Get starting point for finding bounding box
-        // TODO: Remove unwraps so lib can fail gracefully instead of panicing
-        let t1 = stl_iter.next().unwrap().unwrap();
+        // Get starting point for finding bounding box.
+        let t1 = stl_iter.next().transpose()?.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "STL file contains no triangles")
+        })?;
         let v1 = t1.vertices[0];
 
         let mut mesh = Mesh {
@@ -336,7 +348,13 @@ impl Mesh {
             .length()
             .max(self.bounds.width())
             .max(self.bounds.height());
-        let scale = 2.0 / longest;
+        // Degenerate meshes can have no spatial extent. Keep their coordinates
+        // finite so malformed input cannot poison the render pipeline with NaNs.
+        let scale = if longest > f32::EPSILON {
+            2.0 / longest
+        } else {
+            1.0
+        };
         info!("Scale:\t{}", scale);
         let scale_matrix = cgmath::Matrix4::from_scale(scale);
         scale_matrix * translation_matrix
@@ -366,7 +384,36 @@ fn normal(tri: &stl_io::Triangle) -> Normal {
     let w = p3 - p1;
     let n = v.cross(w);
     let mag = n.x.abs() + n.y.abs() + n.z.abs();
-    Normal {
-        normal: [n.x / mag, n.y / mag, n.z / mag],
+    if mag > f32::EPSILON {
+        Normal {
+            normal: [n.x / mag, n.y / mag, n.z / mag],
+        }
+    } else {
+        Normal {
+            normal: [0.0, 0.0, 1.0],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_stl_returns_an_error() {
+        let result = Mesh::from_stl(Cursor::new(Vec::<u8>::new()), false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn degenerate_triangle_gets_a_finite_normal() {
+        let point = Vector::new([1.0, 1.0, 1.0]);
+        let triangle = Triangle {
+            normal: Vector::new([0.0, 0.0, 0.0]),
+            vertices: [point, point, point],
+        };
+
+        let calculated = normal(&triangle);
+        assert!(calculated.normal.iter().all(|value| value.is_finite()));
     }
 }

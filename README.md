@@ -1,7 +1,6 @@
 # stl-thumb
 
-[![Build Status](https://github.com/unlimitedbacon/stl-thumb/workflows/Build/badge.svg)](https://github.com/unlimitedbacon/stl-thumb/actions/workflows/build-ci.yml)
-[![Build Status](https://ci.appveyor.com/api/projects/status/exol1llladgo3f98/branch/master?svg=true)](https://ci.appveyor.com/project/unlimitedbacon/stl-thumb/branch/master)
+[![Build Status](https://github.com/Teknoist/stl-thumb/actions/workflows/build-ci.yml/badge.svg)](https://github.com/Teknoist/stl-thumb/actions/workflows/build-ci.yml)
 [![Documentation](https://img.shields.io/docsrs/stl-thumb/latest)](https://docs.rs/stl-thumb/latest/stl_thumb/)
 [![Crates.io](https://img.shields.io/crates/v/stl-thumb.svg)](https://crates.io/crates/stl-thumb)
 
@@ -16,6 +15,33 @@ Stl-thumb is a fast lightweight thumbnail generator for 3D model(STL, OBJ, 3MF) 
 Stl-thumb requires 64 bit Windows 7 or later. [Download the installer .exe](https://github.com/unlimitedbacon/stl-thumb/releases/latest) for the latest release and run it.
 
 The installer will tell the Windows shell to refresh the thumbnail cache, however this does not always seem to work. If your icons do not change then try using the [Disk Cleanup](https://en.wikipedia.org/wiki/Disk_Cleanup) utility to clear the thumbnail cache.
+
+#### SMB shares and `Thumbs.db`
+
+Windows Explorer, not `stl-thumb`, creates hidden `Thumbs.db` cache files while browsing network shares. Explorer can keep these files open and temporarily prevent a folder from being renamed or deleted.
+
+This repository includes a PowerShell tool that disables `Thumbs.db` caching on network folders for the current user while keeping STL previews enabled. Run it once for every Windows user that accesses the share:
+
+```powershell
+# Check the current policy without changing it
+powershell -NoProfile -File .\scripts\Set-SmbThumbnailPolicy.ps1 -Mode Status
+
+# Preview policy and cleanup changes
+powershell -NoProfile -File .\scripts\Set-SmbThumbnailPolicy.ps1 -Mode Protect `
+  -CleanupPath "\\server\share\models" -Recurse -WhatIf
+
+# Apply the policy, remove existing caches, and reload Explorer
+powershell -NoProfile -File .\scripts\Set-SmbThumbnailPolicy.ps1 -Mode Protect `
+  -CleanupPath "\\server\share\models" -Recurse -RestartExplorer
+```
+
+The cleanup command accepts UNC paths and mapped network drives, but deliberately refuses local paths. If a cache is already locked, close Explorer windows using that share and run the command again. To restore Windows' default behavior:
+
+```powershell
+powershell -NoProfile -File .\scripts\Set-SmbThumbnailPolicy.ps1 -Mode Restore -RestartExplorer
+```
+
+For managed environments, deploy Microsoft's [**Turn off the caching of thumbnails in hidden thumbs.db files**](https://learn.microsoft.com/windows/client-management/mdm/policy-csp-admx-thumbnails#disablethumbsdbonnetworkfolders) user policy instead of running the script separately for each user.
 
 ### Linux
 
