@@ -79,7 +79,19 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        target: [x86_64-unknown-linux-gnu, armv7-unknown-linux-gnueabihf, aarch64-unknown-linux-gnu]
+        include:
+        - target: x86_64-unknown-linux-gnu
+          apt_arch: amd64
+          packages: libfreetype6-dev libfontconfig-dev
+          pkg_config_libdir: /usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+        - target: armv7-unknown-linux-gnueabihf
+          apt_arch: armhf
+          packages: gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf libc-dev-armhf-cross libfreetype6-dev:armhf libfontconfig-dev:armhf
+          pkg_config_libdir: /usr/lib/arm-linux-gnueabihf/pkgconfig:/usr/share/pkgconfig
+        - target: aarch64-unknown-linux-gnu
+          apt_arch: arm64
+          packages: gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc-dev-arm64-cross libfreetype6-dev:arm64 libfontconfig-dev:arm64
+          pkg_config_libdir: /usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
     steps:
     - uses: actions/checkout@v4
     - uses: actions/cache@v4
@@ -92,31 +104,29 @@ jobs:
           target/
         key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Install packages
-      # This is all BS to get random dependencies to cross compile and I hate it
       run: |
         sudo cp .github/workflows/sources.list /etc/apt/sources.list
-        sudo dpkg --add-architecture arm64
-        sudo dpkg --add-architecture armhf
+        if [ "${{ matrix.apt_arch }}" != "amd64" ]; then
+          sudo dpkg --add-architecture ${{ matrix.apt_arch }}
+        fi
         sudo apt-get update
-        sudo apt-get install gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu g++-arm-linux-gnueabihf g++-aarch64-linux-gnu libc-dev-armhf-cross libc-dev-arm64-cross libfreetype6-dev:arm64 libfreetype6-dev:armhf libfontconfig-dev:arm64 libfontconfig-dev:armhf
+        sudo apt-get install ${{ matrix.packages }}
     - name: Prep build environment
       run: |
-        if [ ${{ matrix.target }} == "armv7-unknown-linux-gnueabihf" ];
-        then
-          export PKG_CONFIG_SYSROOT_DIR=/usr/arm-linux-gnueabihf
-        elif [ ${{ matrix.target }} == "aarch64-unknown-linux-gnu" ];
-        then
-          export PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu
-        fi
         rustup target add ${{ matrix.target }}
-        cargo install cargo-deb --force
-        cargo install cargo-generate-rpm --force
+        cargo install cargo-deb --version 3.7.0 --locked
+        cargo install cargo-generate-rpm --version 0.21.0 --locked
     - name: Package DEB
-      run: |
-        cargo deb --target ${{ matrix.target }}
+      env:
+        PKG_CONFIG_ALLOW_CROSS: 1
+        PKG_CONFIG_LIBDIR: ${{ matrix.pkg_config_libdir }}
+      run: cargo deb --target ${{ matrix.target }}
     - name: Package RPM
+      env:
+        PKG_CONFIG_ALLOW_CROSS: 1
+        PKG_CONFIG_LIBDIR: ${{ matrix.pkg_config_libdir }}
       run: |
-        cargo build --release
+        cargo build --release --target ${{ matrix.target }}
         cargo generate-rpm --target-dir ./target --target ${{ matrix.target }}
     - uses: actions/upload-artifact@v4
       with:
