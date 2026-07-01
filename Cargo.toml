@@ -13,6 +13,7 @@ exclude = [
     "test_data/*"
 ]
 edition = "2021"
+rust-version = "1.74"
 
 [lib]
 name = "stl_thumb"
