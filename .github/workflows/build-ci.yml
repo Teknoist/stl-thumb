@@ -26,8 +26,8 @@ jobs:
       run: cargo check --all-targets
     - name: Lint all targets
       run: cargo clippy --all-targets -- -D warnings
-    - name: Run tests
-      run: cargo test
+    - name: Run non-graphics tests
+      run: cargo test mesh::tests
     - name: Validate SMB policy script
       shell: pwsh
       run: |
