@@ -54,7 +54,6 @@ impl Default for Config {
 
 impl Config {
     pub fn new() -> Config {
-        // Define command line arguments
         let mut matches = clap::Command::new(env!("CARGO_PKG_NAME"))
             .version(env!("CARGO_PKG_VERSION"))
             .author(env!("CARGO_PKG_AUTHORS"))
@@ -89,6 +88,7 @@ impl Config {
                 clap::Arg::new("visible")
                     .help("Display the thumbnail in a window instead of saving a file")
                     .short('x')
+                    .action(clap::ArgAction::SetTrue)
                     .required(false)
             )
             .arg(
@@ -123,6 +123,7 @@ impl Config {
                 clap::Arg::new("recalc_normals")
                     .help("Force recalculation of face normals. Use when dealing with malformed STL files.")
                     .long("recalc-normals")
+                    .action(clap::ArgAction::SetTrue)
             )
             .get_matches();
 
@@ -153,7 +154,7 @@ impl Config {
             c.height = x.parse::<u32>().expect("Invalid size");
         }
 
-        c.visible = matches.contains_id("visible");
+        c.visible = matches.get_flag("visible");
         c.verbosity = matches.get_count("verbosity") as usize;
         if let Some(materials) = matches.get_many::<String>("material") {
             let mut iter = materials.map(|m| html_to_rgb(m));
@@ -173,7 +174,7 @@ impl Config {
                 _ => unreachable!(),
             }
         }
-        c.recalc_normals = matches.contains_id("recalc_normals");
+        c.recalc_normals = matches.get_flag("recalc_normals");
 
         c
     }
